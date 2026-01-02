@@ -48,11 +48,17 @@ class PdfViewerSizeDelegateProviderSmart extends PdfViewerSizeDelegateProvider {
     double? smartMaxScale,
     double? maxPagesVisible,
     double? onePassRenderingScaleThreshold,
-  }) : maxScale = maxScale ?? 8.0,
+    double? zoomStep,
+    double? minZoomStep,
+  }) : assert(zoomStep == null || zoomStep > 1.01, 'zoomStep must be greater than 1.01'),
+       assert(minZoomStep == null || minZoomStep > 1.01, 'minZoomStep must be greater than 1.01'),
+       maxScale = maxScale ?? 8.0,
        minScale = minScale ?? 0.1,
        smartMaxScale = smartMaxScale ?? 1.3,
        maxPagesVisible = maxPagesVisible ?? 3.0,
-       onePassRenderingScaleThreshold = onePassRenderingScaleThreshold ?? 200 / 72;
+       onePassRenderingScaleThreshold = onePassRenderingScaleThreshold ?? 200 / 72,
+       zoomStep = zoomStep ?? 1.5,
+       minZoomStep = minZoomStep ?? 1.2;
 
   /// The maximum allowed scale.
   ///
@@ -93,6 +99,15 @@ class PdfViewerSizeDelegateProviderSmart extends PdfViewerSizeDelegateProvider {
   /// zooming the document once it reaches 120% scale, centering it with margins instead.
   final double smartMaxScale;
 
+  /// The target geometric factor between zoom stops.
+  ///
+  /// Used by [PdfViewerSizeDelegate.generateZoomStops] to fill gaps between semantic
+  /// zoom levels (like Fit Page and Fit Width).
+  final double zoomStep;
+
+  /// The minimum ratio gap required to insert an intermediate zoom step.
+  final double minZoomStep;
+
   @override
   PdfViewerSizeDelegate create() => PdfViewerSizeDelegateSmart(
     smartMaxScale: smartMaxScale,
@@ -100,6 +115,8 @@ class PdfViewerSizeDelegateProviderSmart extends PdfViewerSizeDelegateProvider {
     minScale: minScale,
     maxPagesVisible: maxPagesVisible,
     onePassRenderingScaleThreshold: onePassRenderingScaleThreshold,
+    zoomStep: zoomStep,
+    minZoomStep: minZoomStep,
   );
 
   @override
@@ -134,15 +151,21 @@ class PdfViewerSizeDelegateSmart implements PdfViewerSizeDelegate {
     required double maxScale,
     required double minScale,
     required double maxPagesVisible,
+    required double zoomStep,
+    required double minZoomStep,
     required this.onePassRenderingScaleThreshold,
   }) : _minScale = minScale,
        _maxScale = maxScale,
        _smartMaxScale = smartMaxScale,
-       _maxPagesVisible = maxPagesVisible;
+       _maxPagesVisible = maxPagesVisible,
+       _zoomStep = zoomStep,
+       _minZoomStep = minZoomStep;
 
   final double _maxScale;
   final double _minScale;
   final double _maxPagesVisible;
+  final double _zoomStep;
+  final double _minZoomStep;
   final double _smartMaxScale;
 
   PdfViewerController? _controller;
@@ -409,61 +432,86 @@ class PdfViewerSizeDelegateSmart implements PdfViewerSizeDelegate {
 
   @override
   List<double> generateZoomStops(PdfViewerLayoutMetrics metrics) {
-    final alternativeFitScale = metrics.alternativeFitScale;
-    final coverScale = metrics.coverScale;
-    final minScale = metrics.minScale;
-    final maxScale = metrics.maxScale;
+    // 1. Define "Reasonable" bounds for zoom stops.
+    // Even if the technical minScale allows zooming out to 1% (0.01),
+    // we don't want to generate a specific stop there because it's usually illegible.
+    // The user can still pinch/scroll there manually, but double-tap/buttons won't force it.
+    const reasonableMin = 0.125; // 12.5%
+    const reasonableMax = 8.0; // 800%
 
-    // Standard logic: Fit Page, Fit Width (implicitly handled by coverScale logic usually),
-    // and Powers of 2.
-    double z;
+    // Calculate the effective range for zoom stops.
+    // We clamp the hard limits to the reasonable bounds.
+    final effectiveMin = math.max(metrics.minScale, reasonableMin);
+    final effectiveMax = math.min(metrics.maxScale, reasonableMax);
 
-    // Set to simplify deduplication
-    final stops = <double>{};
-
-    // Add Fit Page / Cover stops
-    if (alternativeFitScale != null && !_areZoomsAlmostIdentical(alternativeFitScale, coverScale)) {
-      stops.add(math.min(alternativeFitScale, coverScale));
-      stops.add(math.max(alternativeFitScale, coverScale));
-      z = math.max(alternativeFitScale, coverScale);
-    } else {
-      z = coverScale;
-      stops.add(coverScale);
+    // If the configuration forces min > reasonableMax or max < reasonableMin,
+    // we fallback to the hard limits to ensure at least one stop exists.
+    if (effectiveMin > effectiveMax) {
+      return [metrics.minScale, metrics.maxScale];
     }
 
-    // Add 100% stop if reasonable
-    if (z < 1.0 && 1.0 < maxScale) {
-      stops.add(1.0);
+    // 2. Identify Semantic Anchors
+    final anchors = <double>{
+      effectiveMin,
+      effectiveMax,
+      // We include Fit Page/Width/100% only if they fall within the reasonable/effective range.
+      // This prevents snapping to a "Fit Page" that is microscopic.
+      if (metrics.alternativeFitScale != null) metrics.alternativeFitScale!,
+      metrics.coverScale,
+      1.0,
+    };
+
+    final sortedAnchors = anchors.where((s) => s >= effectiveMin && s <= effectiveMax).toList()..sort();
+
+    // 3. Logarithmic Gap Filling
+    // We want steps to increase by roughly 50% (factor 1.5) each tap.
+    // Safety: Prevent infinite loops if configuration is broken
+    final safeZoomStep = _zoomStep <= 1.01 ? 1.5 : _zoomStep;
+    final safeMinZoomStep = _minZoomStep <= 1.01 ? 1.1 : _minZoomStep;
+
+    final result = <double>[sortedAnchors.first];
+
+    for (var i = 0; i < sortedAnchors.length - 1; i++) {
+      final start = sortedAnchors[i];
+      final end = sortedAnchors[i + 1];
+
+      if (start <= 0 || end <= 0) continue;
+
+      final gap = end / start;
+
+      // If the gap is too small, don't add intermediate steps.
+      if (gap < safeMinZoomStep) {
+        result.add(end);
+        continue;
+      }
+
+      // Calculate how many intervals fit in this gap.
+      // formula: base^intervals = gap  ->  intervals = log(gap) / log(base)
+      final intervals = (math.log(gap) / math.log(safeZoomStep)).round();
+
+      if (intervals <= 1) {
+        result.add(end);
+      } else {
+        // Calculate the specific geometric ratio to land exactly on 'end'
+        final specificRatio = math.pow(gap, 1 / intervals);
+
+        var current = start;
+        for (var k = 0; k < intervals - 1; k++) {
+          current *= specificRatio;
+          result.add(current);
+        }
+        result.add(end);
+      }
     }
 
-    // Generate stops up to maxScale
-    if (z < 1 / 128) {
-      // prevent infinite loop
-      z = 1 / 128;
-    }
-    while (z < maxScale) {
-      stops.add(z);
-      z *= 2;
-    }
-    if (!_areZoomsAlmostIdentical(z, maxScale)) {
-      stops.add(maxScale);
+    // Deduplicate logic (handles float precision issues)
+    final deduped = <double>[result.first];
+    for (var i = 1; i < result.length; i++) {
+      if ((result[i] - deduped.last).abs() > 0.001) {
+        deduped.add(result[i]);
+      }
     }
 
-    // Generate stops down to minScale
-    z = stops.first;
-    while (z > minScale) {
-      z /= 2;
-      stops.add(z);
-    }
-    if ((z - minScale).abs() > 0.01) {
-      stops.add(minScale);
-    }
-
-    // Convert to list and sort
-    final stopsList = stops.toList();
-    stopsList.sort();
-    return stopsList;
+    return deduped;
   }
-
-  static bool _areZoomsAlmostIdentical(double z1, double z2) => (z1 - z2).abs() < 0.01;
 }

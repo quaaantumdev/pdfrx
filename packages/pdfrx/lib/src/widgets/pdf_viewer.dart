@@ -506,7 +506,7 @@ class _PdfViewerState extends State<PdfViewer>
                             ? const EdgeInsets.all(double.infinity) // NOTE: boundaryMargin is handled manually
                             : _adjustedBoundaryMargins,
                         maxScale: _layoutMetrics.maxScale,
-                        minScale: minScale,
+                        minScale: _layoutMetrics.minScale,
                         panAxis: widget.params.panAxis,
                         panEnabled: widget.params.panEnabled,
                         scaleEnabled: widget.params.scaleEnabled,
@@ -1628,9 +1628,6 @@ class _PdfViewerState extends State<PdfViewer>
       ),
     );
   }
-
-  /// The minimum zoom ratio allowed.
-  double get minScale => _layoutMetrics.minScale;
 
   Matrix4 _calcMatrixForRect(Rect rect, {double? zoomMax, double? margin}) {
     margin ??= 0;
@@ -3679,7 +3676,9 @@ class PdfViewerController extends ValueListenable<Matrix4> {
   double? get alternativeFitScale => _state._layoutMetrics.alternativeFitScale;
 
   /// The minimum zoom ratio allowed.
-  double get minScale => _state.minScale;
+  double get minScale => _state._layoutMetrics.minScale;
+
+  double get maxScale => _state._layoutMetrics.maxScale;
 
   /// The area of the document layout which is visible on the view port.
   Rect get visibleRect => _state._visibleRect;
