@@ -281,6 +281,7 @@ class _PdfViewerState extends State<PdfViewer>
 
   PdfViewerScrollInteractionDelegate? _interactionDelegate;
   PdfViewerSizeDelegate? _sizeDelegate;
+  PdfViewerZoomStepsDelegate? _zoomStepsDelegate;
 
   @override
   void initState() {
@@ -290,6 +291,7 @@ class _PdfViewerState extends State<PdfViewer>
     _widgetUpdated(null);
     _updateInteractionDelegate();
     _updateSizeDelegate();
+    _updateZoomStepsDelegate();
 
     // Initialize metrics with default/current state
     // (Layout is null here, so it will return defaults)
@@ -305,6 +307,9 @@ class _PdfViewerState extends State<PdfViewer>
     }
     if (widget.params.sizeDelegateProvider != oldWidget.params.sizeDelegateProvider) {
       _updateSizeDelegate();
+    }
+    if (widget.params.zoomStepsDelegateProvider != oldWidget.params.zoomStepsDelegateProvider) {
+      _updateZoomStepsDelegate();
     }
   }
 
@@ -322,6 +327,11 @@ class _PdfViewerState extends State<PdfViewer>
     if (_controller != null) {
       _sizeDelegate!.init(_controller!);
     }
+  }
+
+  void _updateZoomStepsDelegate() {
+    _zoomStepsDelegate?.dispose();
+    _zoomStepsDelegate = widget.params.zoomStepsDelegateProvider.create();
   }
 
   Future<void> _widgetUpdated(PdfViewer? oldWidget) async {
@@ -418,6 +428,7 @@ class _PdfViewerState extends State<PdfViewer>
   void dispose() {
     _interactionDelegate?.dispose();
     _sizeDelegate?.dispose();
+    _zoomStepsDelegate?.dispose();
     focusReportForPreventingContextMenuWeb(this, false);
     _documentSubscription?.cancel();
     _textSelectionChangedDebounceTimer?.cancel();
@@ -1058,7 +1069,7 @@ class _PdfViewerState extends State<PdfViewer>
   }
 
   void _calcZoomStopTable() {
-    _zoomStops = _sizeDelegate!.generateZoomStops(_layoutMetrics);
+    _zoomStops = _zoomStepsDelegate!.generateZoomStops(_layoutMetrics);
   }
 
   double _findNextZoomStop(double zoom, {required bool zoomUp, bool loop = true}) {
@@ -3678,6 +3689,7 @@ class PdfViewerController extends ValueListenable<Matrix4> {
   /// The minimum zoom ratio allowed.
   double get minScale => _state._layoutMetrics.minScale;
 
+  /// The maximum zoom ratio allowed.
   double get maxScale => _state._layoutMetrics.maxScale;
 
   /// The area of the document layout which is visible on the view port.

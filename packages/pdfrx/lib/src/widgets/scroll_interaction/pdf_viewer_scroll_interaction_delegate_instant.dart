@@ -1,8 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-import '../pdf_viewer.dart';
-import '../sizing/pdf_viewer_size_delegate.dart';
-import 'pdf_viewer_scroll_interaction_delegate.dart';
+import '../../../pdfrx.dart';
 
 /// A provider that creates a [PdfViewerScrollInteractionDelegate] with **Instant** behavior.
 ///

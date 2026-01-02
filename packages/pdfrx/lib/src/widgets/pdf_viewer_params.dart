@@ -76,6 +76,7 @@ class PdfViewerParams {
     this.scrollPhysicsScale,
     this.interactionDelegateProvider = const PdfViewerScrollInteractionDelegateProviderInstant(),
     this.sizeDelegateProvider,
+    this.zoomStepsDelegateProvider = const PdfViewerZoomStepsDelegateProviderDefault(),
   }) : assert(
          (maxScale == null &&
                      minScale == null &&
@@ -606,6 +607,9 @@ class PdfViewerParams {
   /// relative positioning and boundary clamping.
   final PdfViewerSizeDelegateProvider? sizeDelegateProvider;
 
+  /// Provider to create a delegate that generates zoom stops (snap points).
+  final PdfViewerZoomStepsDelegateProvider zoomStepsDelegateProvider;
+
   /// A convenience function to get platform-specific default scroll physics.
   ///
   /// On iOS/MacOS this is [BouncingScrollPhysics], and on Android this is [FixedOverscrollPhysics], a
@@ -676,7 +680,8 @@ class PdfViewerParams {
         other.linkHandlerParams != linkHandlerParams ||
         other.scrollPhysics != scrollPhysics ||
         other.interactionDelegateProvider != interactionDelegateProvider ||
-        other.sizeDelegateProvider != sizeDelegateProvider;
+        other.sizeDelegateProvider != sizeDelegateProvider ||
+        other.zoomStepsDelegateProvider != zoomStepsDelegateProvider;
   }
 
   @override
@@ -744,7 +749,8 @@ class PdfViewerParams {
         other.forceReload == forceReload &&
         other.scrollPhysics == scrollPhysics &&
         other.interactionDelegateProvider == interactionDelegateProvider &&
-        other.sizeDelegateProvider == sizeDelegateProvider;
+        other.sizeDelegateProvider == sizeDelegateProvider &&
+        other.zoomStepsDelegateProvider == zoomStepsDelegateProvider;
   }
 
   @override
@@ -780,6 +786,7 @@ class PdfViewerParams {
         onLongPressStart.hashCode ^
         onDocumentChanged.hashCode ^
         calculateInitialPageNumber.hashCode ^
+        // ignore: deprecated_member_use_from_same_package
         calculateInitialZoom.hashCode ^
         calculateCurrentPageNumber.hashCode ^
         onViewerReady.hashCode ^
@@ -810,7 +817,8 @@ class PdfViewerParams {
         forceReload.hashCode ^
         scrollPhysics.hashCode ^
         interactionDelegateProvider.hashCode ^
-        sizeDelegateProvider.hashCode;
+        sizeDelegateProvider.hashCode ^
+        zoomStepsDelegateProvider.hashCode;
   }
 }
 
