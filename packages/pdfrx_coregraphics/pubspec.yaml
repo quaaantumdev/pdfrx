@@ -4,6 +4,7 @@ version: 0.1.16
 homepage: https://github.com/espresso3389/pdfrx
 repository: https://github.com/espresso3389/pdfrx/tree/master/packages/pdfrx
 issue_tracker: https://github.com/espresso3389/pdfrx/issues
+publish_to: none
 
 environment:
   sdk: '>=3.9.0 <4.0.0'
@@ -13,7 +14,11 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  pdfrx_engine: ^0.3.9
+  pdfrx_engine:
+    git:
+      url: https://github.com/quaaantumdev/pdfrx.git
+      ref: master
+      path: packages/pdfrx_engine
   http:
 
 dev_dependencies:

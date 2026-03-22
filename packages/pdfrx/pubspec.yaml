@@ -7,6 +7,7 @@ issue_tracker: https://github.com/espresso3389/pdfrx/issues
 screenshots:
   - description: 'Viewer example on Web'
     path: screenshot.jpg
+publish_to: none
 
 environment:
   sdk: '>=3.9.0 <4.0.0'
@@ -14,7 +15,11 @@ environment:
 resolution: workspace
 
 dependencies:
-  pdfrx_engine: ^0.3.9
+  pdfrx_engine:
+    git:
+      url: https://github.com/quaaantumdev/pdfrx.git
+      ref: master
+      path: packages/pdfrx_engine
   pdfium_flutter: ^0.1.8
   collection:
   crypto: ^3.0.6
@@ -37,6 +42,10 @@ dev_dependencies:
     sdk: flutter
   flutter_lints:
   archive: ^4.0.7
+
+dependency_overrides:
+  pdfrx_engine:
+    path: ../pdfrx_engine
 
 executables:
   remove_wasm_modules:
